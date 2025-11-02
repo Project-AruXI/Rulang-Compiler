@@ -1,0 +1,107 @@
+program         ::= { module_decl | import_stmt | top_level_decl };
+
+module_decl     ::= "module", identifier, ";";
+import_stmt     ::= "@import", identifier, [, "as", identifier | "::", symbol_list ], ";";
+symbol_list     ::= "{", identifier, { ",", identifier }, "}";
+
+top_level_decl  ::= function_decl | struct_decl | enum_decl | union_decl | type_alias | variable_decl;
+
+function_decl   ::= [ "pub" ], "fxn", identifier, "(", param_list, ")", return_type, block;
+param_list      ::= [ param, { ",", param } ];
+param           ::= identifier, ":", type;
+return_type     ::= type, [ "?" ];
+
+struct_decl     ::= "struct", identifier, "{", { struct_field | method_decl }, "}", ";";
+struct_field    ::= identifier, ":", type, ";";
+method_decl     ::= "fxn", identifier, "(", param_list, ")", return_type, block;
+
+enum_decl       ::= "enum", identifier, [ ":", type ], "{", enum_entry, { ",", enum_entry }, "}", ";";
+enum_entry      ::= identifier, [ "=", integer ];
+
+union_decl      ::= "union", identifier, "{", union_field, { ";", union_field }, "}", ";";
+union_field     ::= identifier, ":", type | identifier, ":", struct_decl;
+
+comment         ::= single_line_comment | multi_line_comment;
+single_line_comment ::= "//", { character }, line_terminator;
+multi_line_comment  ::= "/*", { character }, "*/";
+
+type_alias      ::= "type", identifier, "=", type, ";";
+
+variable_decl   ::= ("const" | "let" | "var"), identifier, ":", type, [ "?" ], [ "=", expr ], ";";
+
+type            ::= identifier | "&", type | "&mut", type | "[", size, "]", type | "<", size, ">", type | "[*]", type | "fxn", "(", param_list, ")", type;
+size            ::= integer | "_";
+
+block           ::= "{", { statement }, "}";
+statement       ::= variable_decl
+                 | expr, ";"
+                 | block
+                 | "return", [ expr ], ";"
+                 | "rethrow", expr, ";"
+                 | "@allocuse", "(", identifier, ")", block
+                 | catch_block
+                 | defer_stmt
+                 | loop_stmt
+                 | conditional_stmt
+                 | switch_stmt;
+
+catch_block     ::= "catch", "|", identifier, "|", block;
+defer_stmt      ::= "defer", block;
+
+loop_stmt       ::= labeled_loop | while_loop | for_loop | do_while_loop | foreach_loop;
+labeled_loop    ::= identifier, ":=", loop_stmt;
+while_loop      ::= "while", "(", expr, ")", block;
+for_loop        ::= "for", "(", variable_decl, expr, ";", expr, ")", block;
+do_while_loop   ::= "do", block, "while", "(", expr, ")", ";";
+foreach_loop    ::= "foreach", "(", identifier, ",", identifier, "in", expr, ")", block;
+
+conditional_stmt ::= "if", "(", expr, ")", block, { "else if", "(", expr, ")", block }, [ "else", block ];
+
+switch_stmt     ::= "switch", "(", expr, ")", "{", switch_case, { ",", switch_case }, "}", ";";
+switch_case     ::= expr, "..", expr, "=>", block
+                 | expr, "=>", block
+                 | "_", "=>", block;
+
+expr            ::= literal
+                 | identifier
+                 | function_call
+                 | allocation
+                 | optional_expr
+                 | match_expr
+                 | cast_expr
+                 | array_access
+                 | struct_init
+                 | slice_expr
+                 | binary_expr
+                 | unary_expr
+                 | conditional_expr;
+
+function_call   ::= identifier, "(", [ expr, { ",", expr } ], ")";
+allocation      ::= "new", "(", type, ")" | "new", "(", type, "!", ")";
+optional_expr   ::= expr, "??", expr | expr, "!!";
+match_expr      ::= "unwrap", "(", expr, ")", "or", "|", identifier, "|", "{", match_arm, { ",", match_arm }, "}";
+match_arm       ::= "excuse", identifier, "=>", block;
+cast_expr       ::= "(", expr, ")", "@as", "[", type, "]";
+array_access    ::= identifier, "[", expr, "]";
+struct_init     ::= identifier, "{", field_init, { ",", field_init }, "}";
+field_init      ::= ".", identifier, "=", expr;
+slice_expr      ::= identifier, "[", expr, "..", expr, "]";
+binary_expr     ::= expr, BINARY_OP, expr;
+BINARY_OP       ::= "+" | "-" | "*" | "/" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "&&" | "||" | "&" | "|" | "^" | "~" | "+=" | "-=" | "*=" | "/=" | "&=" | "|=" | "^=" | "~=";
+unary_expr      ::= UNARY_OP, expr;
+UNARY_OP        ::= "-" | "!" | "*";
+conditional_expr ::= "if", "(", expr, ")", block, [ "else", block ];
+
+literal         ::= integer | float | string | "none";
+identifier      ::= LETTER, { LETTER | DIGIT | "_" };
+integer         ::= DIGIT, { DIGIT };
+float           ::= DIGIT, { DIGIT }, ".", DIGIT, { DIGIT };
+string          ::= '"', { character }, '"';
+character       ::= LETTER | DIGIT | SYMBOL | WHITESPACE;
+WHITEPSACE      ::= " " | "\n" | "\t" | "\r";
+LETTER          ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z"
+                 | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z";
+DIGIT           ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+SYMBOL          ::= "!" | "@" | "#" | "$" | "%" | "^" | "&" | "*" | "(" | ")" | "-" | "+" 
+                 | "=" | "{" | "}" | "}" | "[" | "]" | "|" | "\\" | ":" | ";" | "'" | "<" 
+                 | ">" | "," | "." | "?" | "/" | "~" | "_";
