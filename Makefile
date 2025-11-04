@@ -9,7 +9,7 @@ STRUCTURES = ./structures
 
 INCLUDES = -I$(HEADERS) -I$(COMMON)
 
-SRCS = compiler.c $(COMP)/diagnostics.c 
+SRCS = compiler.c cli.c $(COMP)/diagnostics.c 
 # 			 $(COMP)/lexer.c $(COMP)/parser.c \
 # 			 $(COMP)/codegen.c $(COMP)/utils.c $(STRUCTURES)/ast.c
 LIBS = $(COMMON)/libargparse.a $(COMMON)/libsds.a $(COMMON)/libpcre2-8.a

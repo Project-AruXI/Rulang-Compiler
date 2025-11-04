@@ -10,8 +10,6 @@
 // To include debug symbols or not
 // Whether warnings are fatal or not
 // Output filename
-// Whether to enable entire enhanced typing features
-// Which enhanced typing features to enable/disable
 
 typedef uint8_t FLAGS8;
 

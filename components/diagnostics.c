@@ -11,9 +11,6 @@ static char buffer[164];
 static Config config;
 
 
-// Treating warnings as error preceeds doWarn
-// Ie if `arxc -W -F`, `-W` is ignored
-
 static char* errnames[ERR_NOT_ALLOWED + 1] = {
 	"INTERNAL ERROR",
 	"MEMORY ERROR",
@@ -49,6 +46,8 @@ void emitError(errType err, linedata_ctx* linedata, const char* fmsg, ...) {
 
 
 void emitWarning(warnType warn, linedata_ctx* linedata, const char* fmsg, ...) {
+	// Treating warnings as error preceeds doWarn
+	// Ie if `arxc -W -F`, `-W` is ignored
 	if (config.warningAsFatal) {
 		emitError((errType)warn, linedata, fmsg);
 		return;
