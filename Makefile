@@ -43,3 +43,4 @@ debug: arxc
 clean:
 	rm -f **/*.o
 	rm compiler.o
+	rm cli.o

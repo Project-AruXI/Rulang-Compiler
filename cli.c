@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
@@ -5,6 +6,7 @@
 #include "argparse.h"
 #include "config.h"
 #include "diagnostics.h"
+#include "compiler.h"
 
 #define MAJOR_VERSION 0
 #define MINOR_VERSION 1
@@ -29,7 +31,7 @@ static void appendArgs(char** argv, int* arglen, int* argcap, const char* newarg
 
 static void parseBuildArgs(int argc, const char** argv) {
   printf("Build system is not yet implemented.\n");
-  return;
+  // return;
 
   bool showVersion = false;
 
@@ -199,7 +201,7 @@ static const char** parseArgs(int argc, const char** argv, int* filecount) {
   };
 
   struct argparse argparse;
-  argparse_init(&argparse, options, usages, 0);
+  argparse_init(&argparse, options, usages, ARGPARSE_STOP_AT_NON_OPTION);
   argparse_describe(&argparse, "Rulang Compiler", NULL);
   int nparsed = argparse_parse(&argparse, argc, argv);
 
