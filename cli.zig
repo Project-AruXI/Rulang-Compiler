@@ -57,6 +57,7 @@ fn parseArgs() ![][]const u8 {
 
   if (matches.containsArg("version")) {
     try stdout.print("Rulang Compiler version {}.{}.{}\n", .{ MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION });
+    try stdout.flush();
     std.process.exit(0);
   }
 
