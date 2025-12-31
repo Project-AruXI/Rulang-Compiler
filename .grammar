@@ -43,7 +43,10 @@ statement       ::= variable_decl
                  | defer_stmt
                  | loop_stmt
                  | conditional_stmt
-                 | switch_stmt;
+                 | switch_stmt
+                 | break_stmt
+                 | continue_stmt
+                 | nextcase_stmt;
 
 catch_block     ::= "catch", "|", identifier, "|", block;
 defer_stmt      ::= "defer", block;
@@ -57,10 +60,15 @@ foreach_loop    ::= "foreach", "(", identifier, ",", identifier, "in", expr, ")"
 
 conditional_stmt ::= "if", "(", expr, ")", block, { "else if", "(", expr, ")", block }, [ "else", block ];
 
-switch_stmt     ::= "switch", "(", expr, ")", "{", switch_case, { ",", switch_case }, "}", ";";
-switch_case     ::= expr, "..", expr, "=>", block
-                 | expr, "=>", block
-                 | "_", "=>", block;
+switch_stmt     ::= "switch", "(", expr, ")", "{", switch_stmt_case, { ",", switch_stmt_case }, "}", ";";
+switch_stmt_case ::= expr, "..", expr, "=>", switch_stmt_block
+                  | expr, "=>", switch_stmt_block
+                  | "_", "=>", switch_stmt_block;
+switch_stmt_block ::= "{", { statement }, "}";
+
+break_stmt      ::= "break", [ identifier ], ";";
+continue_stmt   ::= "continue", [ identifier ], ";";
+nextcase_stmt   ::= "nextcase", ";";
 
 expr            ::= literal
                  | identifier
@@ -74,7 +82,8 @@ expr            ::= literal
                  | slice_expr
                  | binary_expr
                  | unary_expr
-                 | conditional_expr;
+                 | conditional_expr
+                 | switch_expr;
 
 function_call   ::= identifier, "(", [ expr, { ",", expr } ], ")";
 allocation      ::= "new", "(", type, ")" | "new", "(", type, "!", ")";
@@ -91,6 +100,12 @@ BINARY_OP       ::= "+" | "-" | "*" | "/" | "==" | "!=" | "<" | ">" | "<=" | ">=
 unary_expr      ::= UNARY_OP, expr;
 UNARY_OP        ::= "-" | "!" | "*";
 conditional_expr ::= "if", "(", expr, ")", block, [ "else", block ];
+
+switch_expr     ::= "switch", "(", expr, ")", "{", switch_expr_case, { ",", switch_expr_case }, "}";
+switch_expr_case ::= expr, "..", expr, "=>", switch_expr_block
+                  | expr, "=>", switch_expr_block
+                  | "_", "=>", switch_expr_block;
+switch_expr_block ::= "{", { statement }, "yield", expr, ";", "}";
 
 literal         ::= integer | float | string | "none";
 identifier      ::= LETTER, { LETTER | DIGIT | "_" };
