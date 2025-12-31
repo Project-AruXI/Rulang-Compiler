@@ -12,7 +12,7 @@ pub const WarningFlags = enum(FLAGS8) {
 pub const Config = struct {
   useDebugSymbols: bool,
   warningAsFatal: bool,
-  outbin: ?[]const u8,
+  outbin: []const u8,
   warnings: WarningFlags,
 
   compileOnly: bool, // Generate assembly and stop
@@ -25,7 +25,7 @@ pub const Config = struct {
     return Config{
       .useDebugSymbols = false,
       .warningAsFatal = false,
-      .outbin = outbin,
+      .outbin = outbin orelse "out.aru",
       .warnings = WarningFlags.NONE,
       .compileOnly = compileOnly,
       .assembleOnly = assembleOnly,

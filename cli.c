@@ -3,10 +3,9 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "argparse.h"
+#include "../Common/argparse.h"
 #include "config.h"
 #include "diagnostics.h"
-#include "compiler.h"
 
 #define MAJOR_VERSION 0
 #define MINOR_VERSION 1

@@ -17,8 +17,15 @@ pub fn build(b: *std.Build) void {
     }),
   });
 
+  const options = b.addOptions();
+  options.addOption(bool, "dprint", b.option(bool, "dprint", "Enable debug printing") orelse false);
+  exe.root_module.addOptions("build_options", options);
+
   const cliargs = b.dependency("yazap", .{});
   exe.root_module.addImport("args", cliargs.module("yazap"));
+
+  const cham = b.dependency("chameleon", .{});
+  exe.root_module.addImport("chameleon", cham.module("chameleon"));
 
   const install_exe = b.addInstallArtifact(exe, .{
     .dest_dir = .{

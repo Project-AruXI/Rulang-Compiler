@@ -1,6 +1,4 @@
 out/
 **/*.o
-buildsys/.zig-cache/
-buildsys/
 .zig-cache/
 .vscode/

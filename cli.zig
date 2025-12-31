@@ -1,12 +1,16 @@
 // zig fmt: off
 
 const std = @import("std");
+const buildopts = @import("build_options");
 const args = @import("args");
 const App = args.App;
 const Arg = args.Arg;
+const Command = args.Command;
+const Chameleon = @import("chameleon");
 
 const config = @import("config.zig");
 const compiler = @import("compiler.zig");
+const buildRunner = @import("buildsys/buildRunner.zig");
 
 const MAJOR_VERSION = 0;
 const MINOR_VERSION = 1;
@@ -23,6 +27,8 @@ const stdout = &w.interface;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var allocator = gpa.allocator();
 
+var clr:Chameleon.RuntimeChameleon = undefined;
+
 var cfg = config.Config{
   .useDebugSymbols = false,
   .warningAsFatal = false,
@@ -35,12 +41,44 @@ var cfg = config.Config{
 };
 
 
+const DbgLvl = enum {
+  DBG_BASIC,
+  DBG_DETAIL,
+  DBG_TRACE
+};
+
+
+fn debug(lvl: DbgLvl, comptime fmt: []const u8, fmtargs: anytype) void {
+  if (buildopts.dprint) {
+    var colorstr: []const u8 = undefined;
+    switch (lvl) {
+      DbgLvl.DBG_BASIC => { 
+        colorstr = clr.cyan().fmt(fmt, fmtargs) catch "";
+      },
+      DbgLvl.DBG_DETAIL => { 
+        colorstr = clr.blue().fmt(fmt, fmtargs) catch "";
+      },
+      DbgLvl.DBG_TRACE => { 
+        colorstr = clr.magenta().fmt(fmt, fmtargs) catch "";
+      },
+    }
+    std.debug.print("{s}", .{colorstr});
+  }
+}
+
+
+
 fn parseArgs() ![][]const u8 {
   var cliargs = App.init(std.heap.page_allocator, "arxc", "Desc");
   defer cliargs.deinit();
 
   var cli = cliargs.rootCommand();
   cli.setProperty(.help_on_empty_args);
+
+  try cli.addSubcommands(&[_]Command{
+    cliargs.createCommand("build", "Build the project"),
+    cliargs.createCommand("init", "Initialize a new Rulang project"),
+  });
 
   try cli.addArgs(&[_]Arg{
     Arg.singleValueOption("output", 'o', "Output file"),
@@ -54,6 +92,15 @@ fn parseArgs() ![][]const u8 {
   try cli.addArg(Arg.multiValuesPositional("files", null, null));
 
   const matches = try cliargs.parseProcess();
+
+  if (matches.subcommandMatches("build")) |buildMatch| {
+    debug(.DBG_BASIC, "Matched subcommand build\n", .{});
+    try buildRunner.runBuild(buildMatch);
+  }
+
+  if (matches.containsArg("build")) {
+    debug(.DBG_BASIC, "Build arg.\n", .{});
+  }
 
   if (matches.containsArg("version")) {
     try stdout.print("Rulang Compiler version {}.{}.{}\n", .{ MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION });
@@ -76,7 +123,7 @@ fn parseArgs() ![][]const u8 {
   }
 
   if (matches.containsArg("output")) {
-    cfg.outbin = matches.getSingleValue("output");
+    cfg.outbin = matches.getSingleValue("output") orelse cfg.outbin;
   }
 
   if (matches.containsArg("assemble")) {
@@ -156,13 +203,12 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
 
   // -o <output file>
   try args_list.append(allocator, "-o");
-  const outname = cfg.outbin orelse "out.aru";
-  try args_list.append(allocator, outname);
+  try args_list.append(allocator, cfg.outbin);
 
   // <filename>.ao for each file
   for (files.items) |filename| {
     const objname = try std.fmt.allocPrint(allocator, "{s}.ao", .{filename});
-    std.debug.print("Linking object file: {s}\n", .{objname});
+    debug(.DBG_BASIC, "Linking object file: {s}\n", .{objname});
     defer allocator.free(objname);
     try args_list.append(allocator, objname);
   }
@@ -187,7 +233,7 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
   }
   const p1 = try std.fmt.bufPrint(cmd_buf[cmd_pos..], "\n", .{});
   cmd_pos += p1.len;
-  std.debug.print("{s}", .{cmd_buf[0..cmd_pos]});
+  debug(.DBG_BASIC, "{s}", .{cmd_buf[0..cmd_pos]});
 
   var proc = std.process.Child.init(argv, allocator);
   proc.spawn() catch |err| {
@@ -207,12 +253,14 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
 }
 
 pub fn main() !void {
+  clr = Chameleon.initRuntime(.{ .allocator = allocator });
+
   const infiles = parseArgs() catch |err| {
     try stdout.print("Error parsing arguments: {}\n", .{err});
     return err;
   };
 
-  std.debug.print("Infiles count: {d}\n", .{infiles.len});
+  debug(.DBG_BASIC, "Infiles count: {d}\n", .{infiles.len});
 
   // Note that some files may be .ru files or .s files
   // .s files are to be assembled directly
@@ -227,46 +275,45 @@ pub fn main() !void {
 
   var idx: usize = 0;
   for (infiles) |infile| {
-    std.log.debug("Input file {d}: {s} ", .{idx, infile});
+    debug(.DBG_BASIC, "Input file {d}: {s} ", .{idx, infile});
 
     const ext = std.fs.path.extension(infile);
-    std.debug.print("with extension: {s}\n", .{ext});
+    debug(.DBG_BASIC, "with extension: {s}\n", .{ext});
     if (ext.len != 0) {
       if (std.mem.eql(u8, ext, ".ru")) {
-      // Remove .ru extension
-      const bname = std.fs.path.basename(infile);
-      const base = bname[0..bname.len - 3];
-      try files.append(allocator, base);
+        // Remove .ru extension
+        const bname = std.fs.path.basename(infile);
+        const base = bname[0..bname.len - 3];
+        try files.append(allocator, base);
 
-      std.debug.print("Compiling Rulang source file: {s}\n", .{infile});
-      if (!compiler.compile(cfg, infile)) {
-        _ = files.pop();
-        idx += 1;
-        continue;
-      }
-      std.debug.print("Compilation of {s} succeeded.\n", .{infile});
-      
-      if (cfg.compileOnly) {
-        // When compile-only is on, skip assembling
-        _ = files.pop();
-        idx += 1;
-        continue;
-      }
-      const status = callAssembler(base) catch {
-        _ = files.pop();
-        idx += 1;
-        continue;
-      };
-      if (status.Exited != 0) {
-        _ = files.pop();
-      }
-
+        debug(.DBG_BASIC, "Compiling Rulang source file: {s}\n", .{infile});
+        if (!compiler.compile(cfg, infile)) {
+          _ = files.pop();
+          idx += 1;
+          continue;
+        }
+        debug(.DBG_BASIC, "Compilation of {s} succeeded.\n", .{infile});
+        
+        if (cfg.compileOnly) {
+          // When compile-only is on, skip assembling
+          _ = files.pop();
+          idx += 1;
+          continue;
+        }
+        const status = callAssembler(base) catch {
+          _ = files.pop();
+          idx += 1;
+          continue;
+        };
+        if (status.Exited != 0) {
+          _ = files.pop();
+        }
       } else if (std.mem.eql(u8, ext, ".s") or std.mem.eql(u8, ext, ".asm") or std.mem.eql(u8, ext, ".as") or std.mem.eql(u8, ext, ".ars")) {
       // When the option to compile-only is on
       // It shall mean that all files are to be assembly
       // Meaning do not handle assembly files
       if (cfg.compileOnly) {
-        std.debug.print("Compile-only option is set; skipping assembly file: {s}\n", .{infile});
+        debug(.DBG_BASIC, "Compile-only option is set; skipping assembly file: {s}\n", .{infile});
         _ = files.pop();
         idx += 1;
         continue;
@@ -287,9 +334,11 @@ pub fn main() !void {
       }
       } else {
         try stdout.print("Unsupported file extension: {s}\n", .{infile});
+        try stdout.flush();
       }
     } else {
       try stdout.print("Input file {s} has no extension, cannot determine type.\n", .{infile});
+      try stdout.flush();
     }
 
     idx += 1;
