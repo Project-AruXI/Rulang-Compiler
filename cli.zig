@@ -116,14 +116,30 @@ fn parseArgs() ![][]const u8 {
 
   // Add the values from assembler and linker args
   if (matches.getMultiValues("assembler")) | assemblerArgs | {
-    cfg.assemblerArgs = assemblerArgs;
+    const len = assemblerArgs.len;
+    const ptrs = try allocator.alloc([]const u8, len);
+    var i: usize = 0;
+    while (i < assemblerArgs.len) : (i += 1) {
+      const a = assemblerArgs[i];
+      ptrs[i] = try allocator.dupe(u8, a);
+    }
+    cfg.assemblerArgs = ptrs[0..len];
   }
   if (matches.getMultiValues("linker")) | linkerArgs | {
-    cfg.linkerArgs = linkerArgs;
+    const len = linkerArgs.len;
+    const ptrs = try allocator.alloc([]const u8, len);
+    var i: usize = 0;
+    while (i < linkerArgs.len) : (i += 1) {
+      const a = linkerArgs[i];
+      ptrs[i] = try allocator.dupe(u8, a);
+    }
+    cfg.linkerArgs = ptrs[0..len];
   }
 
   if (matches.containsArg("output")) {
-    cfg.outbin = matches.getSingleValue("output") orelse cfg.outbin;
+    if (matches.getSingleValue("output")) |val| {
+      cfg.outbin = try allocator.dupe(u8, val);
+    }
   }
 
   if (matches.containsArg("assemble")) {
@@ -151,24 +167,30 @@ fn callAssembler(filename: []const u8) !std.process.Child.Term {
   var args_list = try std.ArrayList([]const u8).initCapacity(allocator, 8);
   defer args_list.deinit(allocator);
 
+  var allocated = try std.ArrayList([]u8).initCapacity(allocator, 8);
+  defer {
+    for (allocated.items) |b| allocator.free(b);
+    allocated.deinit(allocator);
+  }
+
   // program name
   try args_list.append(allocator, "arxsm");
 
   // -o <filename>.ao
   try args_list.append(allocator, "-o");
   const outname = try std.fmt.allocPrint(allocator, "{s}.ao", .{filename});
-  defer allocator.free(outname);
+  try allocated.append(allocator, outname);
   try args_list.append(allocator, outname);
 
   // <filename>.s
   const asmname = try std.fmt.allocPrint(allocator, "{s}.s", .{filename});
-  defer allocator.free(asmname);
+  try allocated.append(allocator, asmname);
   try args_list.append(allocator, asmname);
 
   // assembler args: each prefixed with '-'
   for (cfg.assemblerArgs) |a| {
     const pref = try std.fmt.allocPrint(allocator, "-{s}", .{a});
-    defer allocator.free(pref);
+    try allocated.append(allocator, pref);
     try args_list.append(allocator, pref);
   }
 
@@ -193,7 +215,7 @@ fn callAssembler(filename: []const u8) !std.process.Child.Term {
 }
 
 fn callLinker(files: std.ArrayList([]const u8)) !void {
-  std.debug.print("Linking {} object files...\n", .{files.items.len});
+  debug(.DBG_BASIC, "Linking {d} object files...\n", .{files.items.len});
 
   var args_list = try std.ArrayList([]const u8).initCapacity(allocator, 8 + files.items.len);
   defer args_list.deinit(allocator);
@@ -209,14 +231,14 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
   for (files.items) |filename| {
     const objname = try std.fmt.allocPrint(allocator, "{s}.ao", .{filename});
     debug(.DBG_BASIC, "Linking object file: {s}\n", .{objname});
-    defer allocator.free(objname);
+    // defer allocator.free(objname);
     try args_list.append(allocator, objname);
   }
 
   // linker args: each prefixed with '-'
   for (cfg.linkerArgs) |a| {
     const pref = try std.fmt.allocPrint(allocator, "-{s}", .{a});
-    defer allocator.free(pref);
+    // defer allocator.free(pref);
     try args_list.append(allocator, pref);
   }
 
@@ -225,15 +247,13 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
 
   var cmd_buf: [2048]u8 = undefined;
   var cmd_pos: usize = 0;
-  const p0 = try std.fmt.bufPrint(cmd_buf[cmd_pos..], "Running linker command:", .{});
-  cmd_pos += p0.len;
   for (args_list.items) |arg| {
-    const p = try std.fmt.bufPrint(cmd_buf[cmd_pos..], " {s}", .{arg});
+    const p = try std.fmt.bufPrint(cmd_buf[cmd_pos..], "{s} ", .{arg});
     cmd_pos += p.len;
   }
   const p1 = try std.fmt.bufPrint(cmd_buf[cmd_pos..], "\n", .{});
   cmd_pos += p1.len;
-  debug(.DBG_BASIC, "{s}", .{cmd_buf[0..cmd_pos]});
+  debug(.DBG_BASIC, "Running linker command: {s}", .{cmd_buf[0..cmd_pos]});
 
   var proc = std.process.Child.init(argv, allocator);
   proc.spawn() catch |err| {
@@ -293,7 +313,7 @@ pub fn main() !void {
           continue;
         }
         debug(.DBG_BASIC, "Compilation of {s} succeeded.\n", .{infile});
-        
+
         if (cfg.compileOnly) {
           // When compile-only is on, skip assembling
           _ = files.pop();
@@ -346,18 +366,22 @@ pub fn main() !void {
 
   if (cfg.assembleOnly) {
     try stdout.print("Assemble-only option is set; skipping linking step.\n", .{});
+    try stdout.flush();
     return;
   }
 
   if (files.items.len == 0) {
     try stdout.print("No files to link after compilation/assembly steps.\n", .{});
+    try stdout.flush();
     return;
   }
 
   // All files assembled to .ao files
   // Now link them
+  std.debug.print("Will call linker\n", .{});
   callLinker(files) catch |err| {
     try stdout.print("Linking failed: {}\n", .{err});
+    try stdout.flush();
     return err;
   };
 }
