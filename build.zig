@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
       .target = target,
       .optimize = optimize,
     }),
-    // .use_llvm = true // use it to be able to use debugger
+    .use_llvm = true // use it to be able to use debugger
   });
 
   const options = b.addOptions();
