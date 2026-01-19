@@ -1,4 +1,6 @@
 out/
 **/*.o
+samples/**/*.ao
+samples/**/*.arx
 .zig-cache/
 .vscode/

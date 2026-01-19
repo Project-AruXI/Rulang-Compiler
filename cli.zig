@@ -66,6 +66,69 @@ fn debug(lvl: DbgLvl, comptime fmt: []const u8, fmtargs: anytype) void {
 }
 
 
+fn buildLinkerArgs(matches: args.ArgMatches) !void {
+  // Build the linker args into config.linkerArgs
+  // Linker args come from the following sources:
+  //   getSingleValue("linker") - a single string being the argument (ie "--linker=d")
+  //   getMultiValues("linker") - multiple strings being the arguments (ie "--linker=d,k")
+  //   getSingleValue("libpath") - a single string being the library path (ie "--libpath=path")
+  //   getMultiValues("libpath") - multiple strings being the library paths (ie "--libpath=path1,path2")
+  //   getSingleValue("libs") - a single string being the library name (ie "--libs=math")
+  //   getMultiValues("libs") - multiple strings being the library names (ie "--libs=math,util")
+  // Resulting string array should be in the form of:
+  // ["d", "k", "Lpath1,path2", "lmath,util"]
+  // and placed into config.linkerArgs
+
+  var linkerArgsList = try std.ArrayList([]const u8).initCapacity(allocator, 10);
+  defer linkerArgsList.deinit(allocator);
+
+  if (matches.getMultiValues("linker")) | linkerArgs | {
+    for (linkerArgs) |arg| {
+      debug(.DBG_BASIC, "Linker arg specified: {s}\n", .{arg});
+      try linkerArgsList.append(allocator, try allocator.dupe(u8, arg));
+    }
+  }
+  if (matches.getSingleValue("linker")) | linkerArg | {
+    debug(.DBG_BASIC, "Single linker arg specified: {s}\n", .{linkerArg});
+    try linkerArgsList.append(allocator, try allocator.dupe(u8, linkerArg));
+  }
+
+  // Handle libpaths
+  if (matches.getMultiValues("libpath")) |libpaths| {
+    for (libpaths) |lp| {
+      debug(.DBG_BASIC, "Library path specified: {s}\n", .{lp});
+      const arg = try std.fmt.allocPrint(allocator, "libpath={s}", .{lp});
+      try linkerArgsList.append(allocator, arg);
+    }
+  }
+  if (matches.getSingleValue("libpath")) |libpath| {
+    debug(.DBG_BASIC, "Single library path specified: {s}\n", .{libpath});
+    const arg = try std.fmt.allocPrint(allocator, "libpath={s}", .{libpath});
+    try linkerArgsList.append(allocator, arg);
+  }
+
+  // Handle libs
+  if (matches.getMultiValues("libs")) |libs| {
+    for (libs) |lib| {
+      debug(.DBG_BASIC, "Library specified: {s}\n", .{lib});
+      const arg = try std.fmt.allocPrint(allocator, "library={s}", .{lib});
+      try linkerArgsList.append(allocator, arg);
+    }
+  }
+  if (matches.getSingleValue("libs")) |lib| {
+    debug(.DBG_BASIC, "Single library specified: {s}\n", .{lib});
+    const arg = try std.fmt.allocPrint(allocator, "library={s}", .{lib});
+    try linkerArgsList.append(allocator, arg);
+  }
+  cfg.linkerArgs = try linkerArgsList.toOwnedSlice(allocator);
+
+  // debug output of final linker args
+  debug(.DBG_DETAIL, "Final linker args ({d}):\n", .{cfg.linkerArgs.len});
+  for (cfg.linkerArgs) |arg| {
+    debug(.DBG_DETAIL, "  {s}\n", .{arg});
+  }
+}
+
 
 fn parseArgs() ![][]const u8 {
   var cliargs = App.init(std.heap.page_allocator, "arxc", "Desc");
@@ -77,10 +140,13 @@ fn parseArgs() ![][]const u8 {
   try cli.addArgs(&[_]Arg{
     Arg.singleValueOption("output", 'o', "Output file"),
     Arg.booleanOption("version", 'V', "Show version and exit"),
+    Arg.booleanOption("debug", 'g', "Include debug symbols in output"),
     Arg.booleanOption("assemble", 's', "Assemble files but do not link."),
     Arg.booleanOption("compile", 'c', "Generate assembly files but do not assemble."),
     Arg.multiValuesOption("assembler", null, "Pass arguments to assembler", 5), // for now assume assembler can take in 5
     Arg.multiValuesOption("linker", null, "Pass arguments to linker", 5), // for now assume linker can take in 5
+    Arg.multiValuesOption("libpath", 'L', "Library path", 10),
+    Arg.multiValuesOption("libs", 'l', "Libraries", 10),
   });
 
   try cli.addArg(Arg.multiValuesPositional("files", null, null));
@@ -99,6 +165,10 @@ fn parseArgs() ![][]const u8 {
     std.process.exit(1);
   }
 
+  if (matches.containsArg("debug")) {
+    cfg.useDebugSymbols = true;
+  }
+
   // Add the values from assembler and linker args
   if (matches.getMultiValues("assembler")) | assemblerArgs | {
     const len = assemblerArgs.len;
@@ -110,16 +180,16 @@ fn parseArgs() ![][]const u8 {
     }
     cfg.assemblerArgs = ptrs[0..len];
   }
-  if (matches.getMultiValues("linker")) | linkerArgs | {
-    const len = linkerArgs.len;
-    const ptrs = try allocator.alloc([]const u8, len);
-    var i: usize = 0;
-    while (i < linkerArgs.len) : (i += 1) {
-      const a = linkerArgs[i];
-      ptrs[i] = try allocator.dupe(u8, a);
-    }
-    cfg.linkerArgs = ptrs[0..len];
+  if (matches.getSingleValue("assembler")) | assemblerArg | {
+    debug(.DBG_BASIC, "Single assembler arg specified: {s}\n", .{assemblerArg});
+    const ptr = try allocator.dupe(u8, assemblerArg);
+    cfg.assemblerArgs = &[_][]const u8{ptr};
   }
+
+  buildLinkerArgs(matches) catch |err| {
+    try stdout.print("Error building linker args: {}\n", .{err});
+    return err;
+  };
 
   if (matches.containsArg("output")) {
     if (matches.getSingleValue("output")) |val| {
@@ -136,7 +206,7 @@ fn parseArgs() ![][]const u8 {
 
   const files = matches.getMultiValues("files").?;
 
-  // Duplicate the file names into our allocator so they outlive `cliargs`
+  // Duplicate the file names so they outlive `cliargs`
   var fileList = try std.ArrayList([]const u8).initCapacity(allocator, files.len);
   defer fileList.deinit(allocator);
   for (files) |f| {
@@ -228,7 +298,14 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
 
   // linker args: each prefixed with '-'
   for (cfg.linkerArgs) |a| {
-    const pref = try std.fmt.allocPrint(allocator, "-{s}", .{a});
+    debug(.DBG_BASIC, "Linker arg before prefix: {s}\n", .{a});
+    const pref = try std.fmt.allocPrint(
+      allocator, "-{s}{s}", .{
+        if (a.len == 1) "" else "-",
+        a
+      }
+    );
+    debug(.DBG_BASIC, "Linker arg: {s} from {s}\n", .{pref, a});
     // defer allocator.free(pref);
     try cmdList.append(allocator, pref);
   }
