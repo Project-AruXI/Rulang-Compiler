@@ -28,31 +28,62 @@ pub fn build(b: *std.Build) void {
   const cham = b.dependency("chameleon", .{});
   exe.root_module.addImport("chameleon", cham.module("chameleon"));
 
-  const install_exe = b.addInstallArtifact(exe, .{
+  // exe.root_module.addAnonymousImport("ast", .{
+  //   .optimize = optimize,
+  //   .target = target,
+  //   .root_source_file = b.path("./ast/mod.zig"),
+  // });
+
+  // exe.root_module.addAnonymousImport("gen", .{
+  //   .optimize = optimize,
+  //   .target = target,
+  //   .root_source_file = b.path("./gen/mod.zig"),
+  // });
+
+  // exe.root_module.addAnonymousImport("lexer", .{
+  //   .optimize = optimize,
+  //   .target = target,
+  //   .root_source_file = b.path("./lexer/mod.zig"),
+  // });
+
+  // exe.root_module.addAnonymousImport("parser", .{
+  //   .optimize = optimize,
+  //   .target = target,
+  //   .root_source_file = b.path("./parser/mod.zig"),
+  // });
+
+  // exe.root_module.addAnonymousImport("utils", .{
+  //   .optimize = optimize,
+  //   .target = target,
+  //   .root_source_file = b.path("./utils/mod.zig"),
+  //   .imports = &.{ .{.name = "chameleon", .module = cham.module("chameleon")} }
+  // });
+
+
+  const installExe = b.addInstallArtifact(exe, .{
     .dest_dir = .{
       .override = .{ .custom = "../out" },
     },
   });
   
-  b.getInstallStep().dependOn(&install_exe.step);
+  b.getInstallStep().dependOn(&installExe.step);
 
-  const run_step = b.step("run", "Run the app");
+  const runStep = b.step("run", "Run the app");
 
-  const run_cmd = b.addRunArtifact(exe);
-  run_step.dependOn(&run_cmd.step);
+  const runCmd = b.addRunArtifact(exe);
+  runStep.dependOn(&runCmd.step);
 
-  run_cmd.step.dependOn(b.getInstallStep());
+  runCmd.step.dependOn(b.getInstallStep());
 
   if (b.args) |args| {
-    run_cmd.addArgs(args);
+    runCmd.addArgs(args);
   }
 
-  const exe_tests = b.addTest(.{
+  const exeTests = b.addTest(.{
     .root_module = exe.root_module,
   });
 
-  const run_exe_tests = b.addRunArtifact(exe_tests);
-
-  const test_step = b.step("test", "Run tests");
-  test_step.dependOn(&run_exe_tests.step);
+  const runExeTests = b.addRunArtifact(exeTests);
+  const testStep = b.step("test", "Run tests");
+  testStep.dependOn(&runExeTests.step);
 }

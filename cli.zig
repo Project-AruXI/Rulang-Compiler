@@ -1,15 +1,16 @@
 // zig fmt: off
 
 const std = @import("std");
-const buildopts = @import("build_options");
 const args = @import("args");
 const App = args.App;
 const Arg = args.Arg;
 const Command = args.Command;
-const Chameleon = @import("chameleon");
+const Error = args.YazapError;
 
 const config = @import("config.zig");
 const compiler = @import("compiler.zig");
+// const debug = @import("utils").debug;
+const debug = @import("utils/debug.zig");
 
 const MAJOR_VERSION = 0;
 const MINOR_VERSION = 1;
@@ -26,8 +27,6 @@ const stdout = &w.interface;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var allocator = gpa.allocator();
 
-var clr:Chameleon.RuntimeChameleon = undefined;
-
 var cfg = config.Config{
   .useDebugSymbols = false,
   .warningAsFatal = false,
@@ -39,31 +38,7 @@ var cfg = config.Config{
   .linkerArgs = &[_][]const u8{},
 };
 
-
-const DbgLvl = enum {
-  DBG_BASIC,
-  DBG_DETAIL,
-  DBG_TRACE
-};
-
-
-fn debug(lvl: DbgLvl, comptime fmt: []const u8, fmtargs: anytype) void {
-  if (buildopts.dprint) {
-    var colorstr: []const u8 = undefined;
-    switch (lvl) {
-      DbgLvl.DBG_BASIC => { 
-        colorstr = clr.cyan().fmt(fmt, fmtargs) catch "";
-      },
-      DbgLvl.DBG_DETAIL => { 
-        colorstr = clr.blue().fmt(fmt, fmtargs) catch "";
-      },
-      DbgLvl.DBG_TRACE => { 
-        colorstr = clr.magenta().fmt(fmt, fmtargs) catch "";
-      },
-    }
-    std.debug.print("{s}", .{colorstr});
-  }
-}
+var Dbg: debug.Debug = undefined;
 
 
 fn buildLinkerArgs(matches: args.ArgMatches) !void {
@@ -84,25 +59,25 @@ fn buildLinkerArgs(matches: args.ArgMatches) !void {
 
   if (matches.getMultiValues("linker")) | linkerArgs | {
     for (linkerArgs) |arg| {
-      debug(.DBG_BASIC, "Linker arg specified: {s}\n", .{arg});
+      Dbg.debug(.DBG_BASIC, "Linker arg specified: {s}\n", .{arg});
       try linkerArgsList.append(allocator, try allocator.dupe(u8, arg));
     }
   }
   if (matches.getSingleValue("linker")) | linkerArg | {
-    debug(.DBG_BASIC, "Single linker arg specified: {s}\n", .{linkerArg});
+    Dbg.debug(.DBG_BASIC, "Single linker arg specified: {s}\n", .{linkerArg});
     try linkerArgsList.append(allocator, try allocator.dupe(u8, linkerArg));
   }
 
   // Handle libpaths
   if (matches.getMultiValues("libpath")) |libpaths| {
     for (libpaths) |lp| {
-      debug(.DBG_BASIC, "Library path specified: {s}\n", .{lp});
+      Dbg.debug(.DBG_BASIC, "Library path specified: {s}\n", .{lp});
       const arg = try std.fmt.allocPrint(allocator, "libpath={s}", .{lp});
       try linkerArgsList.append(allocator, arg);
     }
   }
   if (matches.getSingleValue("libpath")) |libpath| {
-    debug(.DBG_BASIC, "Single library path specified: {s}\n", .{libpath});
+    Dbg.debug(.DBG_BASIC, "Single library path specified: {s}\n", .{libpath});
     const arg = try std.fmt.allocPrint(allocator, "libpath={s}", .{libpath});
     try linkerArgsList.append(allocator, arg);
   }
@@ -110,22 +85,22 @@ fn buildLinkerArgs(matches: args.ArgMatches) !void {
   // Handle libs
   if (matches.getMultiValues("libs")) |libs| {
     for (libs) |lib| {
-      debug(.DBG_BASIC, "Library specified: {s}\n", .{lib});
+      Dbg.debug(.DBG_BASIC, "Library specified: {s}\n", .{lib});
       const arg = try std.fmt.allocPrint(allocator, "library={s}", .{lib});
       try linkerArgsList.append(allocator, arg);
     }
   }
   if (matches.getSingleValue("libs")) |lib| {
-    debug(.DBG_BASIC, "Single library specified: {s}\n", .{lib});
+    Dbg.debug(.DBG_BASIC, "Single library specified: {s}\n", .{lib});
     const arg = try std.fmt.allocPrint(allocator, "library={s}", .{lib});
     try linkerArgsList.append(allocator, arg);
   }
   cfg.linkerArgs = try linkerArgsList.toOwnedSlice(allocator);
 
   // debug output of final linker args
-  debug(.DBG_DETAIL, "Final linker args ({d}):\n", .{cfg.linkerArgs.len});
+  Dbg.debug(.DBG_DETAIL, "Final linker args ({d}):\n", .{cfg.linkerArgs.len});
   for (cfg.linkerArgs) |arg| {
-    debug(.DBG_DETAIL, "  {s}\n", .{arg});
+    Dbg.debug(.DBG_DETAIL, "  {s}\n", .{arg});
   }
 }
 
@@ -181,7 +156,7 @@ fn parseArgs() ![][]const u8 {
     cfg.assemblerArgs = ptrs[0..len];
   }
   if (matches.getSingleValue("assembler")) | assemblerArg | {
-    debug(.DBG_BASIC, "Single assembler arg specified: {s}\n", .{assemblerArg});
+    Dbg.debug(.DBG_BASIC, "Single assembler arg specified: {s}\n", .{assemblerArg});
     const ptr = try allocator.dupe(u8, assemblerArg);
     cfg.assemblerArgs = &[_][]const u8{ptr};
   }
@@ -256,11 +231,11 @@ fn callAssembler(filename: []const u8) !std.process.Child.Term {
   // Execute the process and wait for it to finish
   const argv = cmdList.items;
 
-  debug(.DBG_TRACE, "Assembler command:\n", .{});
+  Dbg.debug(.DBG_TRACE, "Assembler command:\n", .{});
   for (argv) |arg| {
-    debug(.DBG_TRACE, " {s}", .{arg});
+    Dbg.debug(.DBG_TRACE, " {s}", .{arg});
   }
-  debug(.DBG_TRACE, "\n", .{});
+  Dbg.debug(.DBG_TRACE, "\n", .{});
 
   var proc = std.process.Child.init(argv, allocator);
   proc.spawn() catch |err| {
@@ -276,7 +251,7 @@ fn callAssembler(filename: []const u8) !std.process.Child.Term {
 }
 
 fn callLinker(files: std.ArrayList([]const u8)) !void {
-  debug(.DBG_BASIC, "Linking {d} object files...\n", .{files.items.len});
+  Dbg.debug(.DBG_BASIC, "Linking {d} object files...\n", .{files.items.len});
 
   var cmdList = try std.ArrayList([]const u8).initCapacity(allocator, 8 + files.items.len);
   defer cmdList.deinit(allocator);
@@ -291,21 +266,21 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
   // <filename>.ao for each file
   for (files.items) |filename| {
     const objname = try std.fmt.allocPrint(allocator, "{s}.ao", .{filename});
-    debug(.DBG_BASIC, "Linking object file: {s}\n", .{objname});
+    Dbg.debug(.DBG_BASIC, "Linking object file: {s}\n", .{objname});
     // defer allocator.free(objname);
     try cmdList.append(allocator, objname);
   }
 
   // linker args: each prefixed with '-'
   for (cfg.linkerArgs) |a| {
-    debug(.DBG_BASIC, "Linker arg before prefix: {s}\n", .{a});
+    Dbg.debug(.DBG_BASIC, "Linker arg before prefix: {s}\n", .{a});
     const pref = try std.fmt.allocPrint(
       allocator, "-{s}{s}", .{
         if (a.len == 1) "" else "-",
         a
       }
     );
-    debug(.DBG_BASIC, "Linker arg: {s} from {s}\n", .{pref, a});
+    Dbg.debug(.DBG_BASIC, "Linker arg: {s} from {s}\n", .{pref, a});
     // defer allocator.free(pref);
     try cmdList.append(allocator, pref);
   }
@@ -321,7 +296,7 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
   }
   const p1 = try std.fmt.bufPrint(cmdBuf[cmdPos..], "\n", .{});
   cmdPos += p1.len;
-  debug(.DBG_BASIC, "Running linker command: {s}", .{cmdBuf[0..cmdPos]});
+  Dbg.debug(.DBG_BASIC, "Running linker command: {s}", .{cmdBuf[0..cmdPos]});
 
   var proc = std.process.Child.init(argv, allocator);
   proc.spawn() catch |err| {
@@ -341,14 +316,28 @@ fn callLinker(files: std.ArrayList([]const u8)) !void {
 }
 
 pub fn main() !void {
-  clr = Chameleon.initRuntime(.{ .allocator = allocator });
+  Dbg = debug.Debug.init(allocator);
 
   const infiles = parseArgs() catch |err| {
-    try stdout.print("Error parsing arguments: {}\n", .{err});
-    return err;
+    switch (err) {
+      // For normal expected errors, remove unnecessary backtrace but keep default printing
+      Error.UnrecognizedCommand => {},
+      Error.PositionalArgumentNotProvided => {},
+      Error.SubcommandNotProvided => {},
+      Error.UnrecognizedOption => {},
+      Error.OptionValueNotProvided => {},
+      Error.UnexpectedOptionValue => {},
+      Error.EmptyOptionValue => {},
+      Error.InvalidOptionValue => {},
+      Error.TooFewOptionValue => {},
+      Error.TooManyOptionValue => {},
+      else => { return err; },
+    }
+  
+    return;
   };
 
-  debug(.DBG_BASIC, "Infiles count: {d}\n", .{infiles.len});
+  Dbg.debug(.DBG_BASIC, "Infiles count: {d}\n", .{infiles.len});
 
   // Note that some files may be .ru files or .s files
   // .s files are to be assembled directly
@@ -363,23 +352,23 @@ pub fn main() !void {
 
   var idx: usize = 0;
   for (infiles) |infile| {
-    debug(.DBG_BASIC, "Input file {d}: '{s}' ", .{idx, infile});
+    Dbg.debug(.DBG_BASIC, "Input file {d}: '{s}' ", .{idx, infile});
 
     const ext = std.fs.path.extension(infile);
-    debug(.DBG_BASIC, "with extension: {s}\n", .{ext});
+    Dbg.debug(.DBG_BASIC, "with extension: {s}\n", .{ext});
     if (ext.len != 0) {
       if (std.mem.eql(u8, ext, ".ru")) {
         // Remove .ru extension
         const base = infile[0..infile.len - 3];
         try files.append(allocator, base);
 
-        debug(.DBG_BASIC, "Compiling Rulang source file: {s}\n", .{infile});
-        if (!compiler.compile(cfg, infile)) {
+        Dbg.debug(.DBG_BASIC, "Compiling Rulang source file: {s}\n", .{infile});
+        if (!compiler.compile(cfg, infile, &Dbg)) {
           _ = files.pop();
           idx += 1;
           continue;
         }
-        debug(.DBG_BASIC, "Compilation of {s} succeeded.\n", .{infile});
+        Dbg.debug(.DBG_BASIC, "Compilation of {s} succeeded.\n", .{infile});
 
         if (cfg.compileOnly) {
           // When compile-only is on, skip assembling
@@ -400,7 +389,7 @@ pub fn main() !void {
         // It shall mean that all files are to be assembly
         // Meaning do not handle assembly files
         if (cfg.compileOnly) {
-          debug(.DBG_BASIC, "Compile-only option is set; skipping assembly file: {s}\n", .{infile});
+          Dbg.debug(.DBG_BASIC, "Compile-only option is set; skipping assembly file: {s}\n", .{infile});
           _ = files.pop();
           idx += 1;
           continue;

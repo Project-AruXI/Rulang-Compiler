@@ -25,7 +25,7 @@ pub const Config = struct {
     return Config{
       .useDebugSymbols = false,
       .warningAsFatal = false,
-      .outbin = outbin orelse "out.arx",
+      .outbin = outbin orelse "out.aru",
       .warnings = WarningFlags.NONE,
       .compileOnly = compileOnly,
       .assembleOnly = assembleOnly,
