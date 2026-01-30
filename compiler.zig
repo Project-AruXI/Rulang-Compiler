@@ -54,7 +54,6 @@ pub fn compile(cfg: config.Config, filename: []const u8, dbg: *debug.Debug) bool
   // lex and parse
   var lexer = Lexer.init(allocator, data);
   var parser = Parser.init(allocator, compilerSettings);
-  lexer = lexer;
   parser = parser;
 
   while (true) {
@@ -64,7 +63,14 @@ pub fn compile(cfg: config.Config, filename: []const u8, dbg: *debug.Debug) bool
     };
     if (token.tokType == .Eof) break;
     // std.debug.print("Token: {s}\n", .{token.toString()});
-    dbg.debug(.DBG_TRACE, "Token: {}\n", .{token});
+
+    const tokenStr = token.toString(allocator) catch |err| {
+      dbg.debug(.DBG_BASIC, "Error converting token to string: {}\n", .{err});
+      return false;
+    };
+    defer allocator.free(tokenStr);
+
+    dbg.debug(.DBG_TRACE, "Token: {s}\n", .{tokenStr});
   }
 
 
