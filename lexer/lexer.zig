@@ -187,7 +187,7 @@ pub const Lexer = struct {
           this.col += 2;
           while (this.pos < this.sourceline.len) {
             c = this.sourceline[this.pos];
-            if (!std.ascii.isHex(c)) break;
+            if (!std.ascii.isHex(c) and c != '_') break;
             this.pos += 1;
             this.col += 1;
           }
@@ -198,7 +198,7 @@ pub const Lexer = struct {
           this.col += 2;
           while (this.pos < this.sourceline.len) {
             c = this.sourceline[this.pos];
-            if (c != '0' and c != '1') break;
+            if (c != '0' and c != '1' and c != '_') break;
             this.pos += 1;
             this.col += 1;
           }
