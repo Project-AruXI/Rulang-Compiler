@@ -1,5 +1,7 @@
 // zig fmt: off
 
+const std = @import("std");
+
 pub const TokenType = enum {
   // Types
   Ident,
@@ -128,10 +130,14 @@ pub const Token = struct {
     };
   }
 
-  pub fn toString(this: Token) []const u8 {
+  pub fn toString(this: Token, allocator: std.mem.Allocator) ![]const u8 {
     // Make a string that is in the form of:
-    // Token{}
+    // Token{tokType = [type], lexeme = "[lexeme]", line = [line], col = [col]}
 
-    return this.lexeme;
+    const fmt = "Token[tokType = {s}, lexeme = \"{s}\", line = {d}, col = {d}]";
+    const tokTypeStr = try std.fmt.allocPrint(allocator, "{s}", .{@tagName(this.tokType)});
+    defer allocator.free(tokTypeStr);
+    const result = try std.fmt.allocPrint(allocator, fmt, .{ tokTypeStr, this.lexeme, this.line, this.col });
+    return result;
   }
 };
