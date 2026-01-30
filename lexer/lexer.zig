@@ -168,6 +168,94 @@ pub const Lexer = struct {
     }
 
     // Handle numbers (ints and floats)
+    // To make things easier (and the fact that no unicode for numbers), use as character
+    var tokType = TokenType.Integer;
+    var c = this.sourceline[this.pos];
+    var c1 = this.peekCharacter();
+    // Numbers can begin with either '.' (for floats), '+', '-', or a digit
+    if (validNumberStart(c, c1)) {
+      this.col -= 1;
+      const startCol = this.col;
+      const numberStartPos = this.pos;
+
+      var hasDecimalPoint = false;
+
+      while (this.pos < this.sourceline.len) {
+        if (c == '0' and (c1 == 'x' or c1 == 'X')) {
+          // Hexadecimal
+          this.pos += 2;
+          this.col += 2;
+          while (this.pos < this.sourceline.len) {
+            c = this.sourceline[this.pos];
+            if (!std.ascii.isHex(c)) break;
+            this.pos += 1;
+            this.col += 1;
+          }
+          break;
+        } else if (c == '0' and (c1 == 'b' or c1 == 'B')) {
+          // Binary
+          this.pos += 2;
+          this.col += 2;
+          while (this.pos < this.sourceline.len) {
+            c = this.sourceline[this.pos];
+            if (c != '0' and c != '1') break;
+            this.pos += 1;
+            this.col += 1;
+          }
+          break;
+        } else {
+          // Being here means: integer or dot/sign
+          if (c == '+' or c == '-') {
+            this.pos += 1;
+            this.col += 1;
+            c = this.sourceline[this.pos];
+            c1 = this.peekCharacter();
+          } else if (c == 'E' or c == 'e') {
+            // Scientific notation
+            this.pos += 1;
+            this.col += 1;
+
+            c = this.sourceline[this.pos];
+            c1 = this.peekCharacter();
+            if (c == '+' or c == '-') {
+              this.pos += 1;
+              this.col += 1;
+
+              if (!std.ascii.isDigit(c1)) {
+                return error.UnexpectedCharacter;
+              }
+            } else if (!std.ascii.isDigit(c)) {
+              return error.UnexpectedCharacter;
+            }
+          } else if (c == '.') {
+            if (hasDecimalPoint) {
+              // Second decimal point, stop parsing number
+              break;
+            }
+            hasDecimalPoint = true;
+            tokType = TokenType.Float;
+            this.pos += 1;
+            this.col += 1;
+          } else if (!std.ascii.isDigit(c) and c != '_') {
+            // Not a digit, end of number
+            break;
+          } else {
+            this.pos += 1;
+            this.col += 1;
+          }
+        }
+        if (this.pos < this.sourceline.len) {
+          c = this.sourceline[this.pos];
+          c1 = this.peekCharacter();
+        } else {
+          break;
+        }
+      }
+
+      const numberLexeme = this.sourceline[numberStartPos..this.pos];
+      return Token.init(tokType, numberLexeme, this.line, startCol);
+    }
+    
 
 
     // Handle string literals
@@ -242,7 +330,7 @@ pub const Lexer = struct {
 
 
     var len:u32 = 1;
-    var tokType = TokenType.Unknown;
+    tokType = TokenType.Unknown;
 
     // Handle operators and delimiters
     switch (this.peekedGrapheme.?) {
@@ -497,6 +585,14 @@ pub const Lexer = struct {
     return grapheme;
   }
 
+  fn peekCharacter(this: *Lexer) u8 {
+    if (this.pos + 1 >= this.sourceline.len) {
+      return 0;
+    }
+
+    return this.sourceline[this.pos + 1];
+  }
+
   fn getComment(this: *Lexer) !Token {
     if (this.peekedGrapheme.? == '/' and this.peeked2Grapheme.? == '/') {
       const startCol = this.col;
@@ -559,6 +655,10 @@ inline fn validIdentStart(c: u21) bool {
 inline fn validIdentGraph(c: u21) bool {
   const isAsciiAlnum = (c >= @as(u21, 'A') and c <= @as(u21, 'Z')) or (c >= @as(u21, 'a') and c <= @as(u21, 'z')) or (c >= @as(u21, '0') and c <= @as(u21, '9'));
   return isAsciiAlnum or (c == @as(u21, '_')) or (c == 'λ');
+}
+
+inline fn validNumberStart(c:u8, c1:u8) bool {
+  return (c == '.' and std.ascii.isDigit(c1)) or (c == '+' and std.ascii.isDigit(c1)) or (c == '-' and std.ascii.isDigit(c1)) or std.ascii.isDigit(c);
 }
 
 
