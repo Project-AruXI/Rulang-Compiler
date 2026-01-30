@@ -51,7 +51,10 @@ pub const Lexer = struct {
       if (this.pos >= this.sourceline.len) break;
 
       const c = this.sourceline[this.pos];
-      if (c == ' ' or c == '\t') continue;
+      if (c == ' ' or c == '\t') {
+        this.col += 1;
+        continue;
+      }
 
       if (this.sourceline[this.pos] == '\n') {
         this.line += 1;
@@ -66,22 +69,347 @@ pub const Lexer = struct {
     // Check if EOF
     if (this.pos >= this.sourceline.len) return Token.init(.Eof, "", this.line, this.col);
 
-    this.peekedGrapheme = try this.nextGrapheme();
-    this.peeked2Grapheme = try this.peekGrapheme();
+    var graphemeLen: usize = 0;
+    this.peekedGrapheme = try this.nextGrapheme(&graphemeLen);
+    // this.col -= 1;
+    // this.peeked2Grapheme = try this.peekGrapheme();
 
     // Check comments
     if (this.peekedGrapheme.? == '/') {
       if (this.peeked2Grapheme.? == '/' or this.peeked2Grapheme.? == '*') return this.getComment();
     }
 
-    return Token.init(.Unknown, "", this.line, this.col);
+    // Check identifiers/keywords
+    if (validIdentStart(this.peekedGrapheme.?)) {
+      this.col -= 1;
+      const startCol = this.col;
+      const identStartPos = this.pos;
+
+      while (this.pos < this.sourceline.len) {
+        // const c = this.sourceline[this.pos];
+        const c = try this.nextGrapheme(&graphemeLen);
+        if (!validIdentGraph(c)) {
+          this.col -= 1;
+          break;
+        }
+        this.pos += graphemeLen;
+      }
+
+
+      const identLexeme = this.sourceline[identStartPos..this.pos];
+
+      // Filter for keywords
+      const modKey = "module";
+      if (std.mem.eql(u8, identLexeme, modKey)) {
+        return Token.init(.KeyModule, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "pub")) {
+        return Token.init(.KeyPub, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "fxn")) {
+        return Token.init(.KeyFxn, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "if")) {
+        return Token.init(.KeyIf, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "else")) {
+        return Token.init(.KeyElse, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "return")) {
+        return Token.init(.KeyReturn, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "struct")) {
+        return Token.init(.KeyStruct, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "enum")) {
+        return Token.init(.KeyEnum, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "union")) {
+        return Token.init(.KeyUnion, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "while")) {
+        return Token.init(.KeyWhile, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "break")) {
+        return Token.init(.KeyBreak, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "continue")) {
+        return Token.init(.KeyContinue, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "type")) {
+        return Token.init(.KeyType, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "const")) {
+        return Token.init(.KeyConst, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "let")) {
+        return Token.init(.KeyLet, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "var")) {
+        return Token.init(.KeyVar, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "mut")) {
+        return Token.init(.KeyMut, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "rethrow")) {
+        return Token.init(.KeyRethrow, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "catch")) {
+        return Token.init(.KeyCatch, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "defer")) {
+        return Token.init(.KeyDefer, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "for")) {
+        return Token.init(.KeyFor, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "in")) {
+        return Token.init(.KeyIn, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "do")) {
+        return Token.init(.KeyDo, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "foreach")) {
+        return Token.init(.KeyForeach, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "switch")) {
+        return Token.init(.KeySwitch, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "nextcase")) {
+        return Token.init(.KeyNextcase, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "unwrap")) {
+        return Token.init(.KeyUnwrap, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "excuse")) {
+        return Token.init(.KeyExcuse, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "yield")) {
+        return Token.init(.KeyYield, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "none")) {
+        return Token.init(.KeyNone, identLexeme, this.line, startCol);
+      } else if (std.mem.eql(u8, identLexeme, "lam") or std.mem.eql(u8, identLexeme, "λ")) {
+        return Token.init(.KeyLambda, identLexeme, this.line, startCol);
+      }
+
+      return Token.init(.Ident, identLexeme, this.line, startCol);
+    }
+
+    // Handle numbers (ints and floats)
+
+    // Handle string literals
+
+    // Handle characters
+
+
+    var len:u32 = 1;
+    var tokType = TokenType.Unknown;
+
+    // Handle operators and delimiters
+    switch (this.peekedGrapheme.?) {
+      '=' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .Equal;
+        } else if (this.peeked2Grapheme.? == '>') {
+          len = 2;
+          tokType = .RightArrow;
+        } else {
+          tokType = .Assign;
+        }
+      },
+      ':' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .LAssign;
+        } else if (this.peeked2Grapheme.? == ':') {
+          len = 2;
+          tokType = .DColon;
+        } else {
+          tokType = .Colon;
+        }
+      },
+      '?' => {
+        if (this.peeked2Grapheme.? == '?') {
+          len = 2;
+          tokType = .DQuestion;
+        } else {
+          tokType = .Question;
+        }
+      },
+      '!' => {
+        if (this.peeked2Grapheme.? == '!') {
+          len = 2;
+          tokType = .DExclamation;
+        } else {
+          tokType = .Exclamation;
+        }
+      },
+      '@' => {
+        tokType = .At;
+      },
+      '_' => {
+        tokType = .Underscore;
+      },
+      '+' => {
+        if (this.peeked2Grapheme.? == '+') {
+          len = 2;
+          tokType = .PlusPlus;
+        } else if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .PlusAssign;
+        } else {
+          tokType = .Plus;
+        }
+      },
+      '-' => {
+        if (this.peeked2Grapheme.? == '-') {
+          len = 2;
+          tokType = .MinusMinus;
+        } else if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .MinusAssign;
+        } else {
+          tokType = .Minus;
+        }
+      },
+      '*' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .AsteriskAssign;
+        } else {
+          tokType = .Asterisk;
+        }
+      },
+      '/' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .DivideAssign;
+        } else {
+          tokType = .Divide;
+        }
+      },
+      '<' => {
+        if (this.peeked2Grapheme.? == '<') {
+          const peeked3 = try this.peekGrapheme();
+
+          if (peeked3 == '=') {
+            len = 3;
+            tokType = .LeftShiftAssign;
+          } else {
+            len = 2;
+            tokType = .LeftShift;
+          }
+        } else if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .LessEqual;
+        } else {
+          // tokType = .LessThan;
+          tokType = .LAngle; // Note that '<' can either mean a less-than or a left angle bracket
+          // Parser will figure it out
+        }
+      },
+      '>' => {
+        if (this.peeked2Grapheme.? == '>') {
+          const peeked3 = try this.peekGrapheme();
+
+          if (peeked3 == '=') {
+            len = 3;
+            tokType = .RightShiftAssign;
+          } else {
+            len = 2;
+            tokType = .RightShift;
+          }
+        } else if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .GreaterEqual;
+        } else {
+          // tokType = .GreaterThan;
+          tokType = .RAngle; // Same as '<'
+        }
+      },
+      '&' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .BitAndAssign;
+        } else if (this.peeked2Grapheme.? == '&') {
+          len = 2;
+          tokType = .LogicalAnd;
+        } else {
+          tokType = .BitAnd;
+        }
+      },
+      '|' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .BitOrAssign;
+        } else if (this.peeked2Grapheme.? == '|') {
+          len = 2;
+          tokType = .LogicalOr;
+        } else {
+          tokType = .Bar; // Note that `|` can mean a bit or in the context of (a|b) or a capture group as in `|a|`
+          // For now, it will be bar until the parser can figure it out
+        }
+      },
+      '^' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .BitXorAssign;
+        } else {
+          tokType = .BitXor;
+        }
+      },
+      '%' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .ModuloAssign;
+        } else {
+          tokType = .Modulo;
+        }
+      },
+      '~' => {
+        if (this.peeked2Grapheme.? == '=') {
+          len = 2;
+          tokType = .BitNotAssign;
+        } else {
+          tokType = .BitNot;
+        }
+      },
+      ',' => {
+        tokType = .Comma;
+      },
+      ';' => {
+        tokType = .Semicolon;
+      },
+      '.' => {
+        if (this.peeked2Grapheme.? == '.') {
+          len = 2;
+          tokType = .DotDot;
+        } else {
+          tokType = .Dot;
+        }
+      },
+      '(' => {
+        tokType = .LParen;
+      },
+      ')' => {
+        tokType = .RParen;
+      },
+      '{' => {
+        tokType = .LBrace;
+      },
+      '}' => {
+        tokType = .RBrace;
+      },
+      '[' => {
+        if (this.peeked2Grapheme.? == '[') {
+          len = 2;
+          tokType = .AttrStart;
+        } else {
+          tokType = .LBracket;
+        }
+      },
+      ']' => {
+        if (this.peeked2Grapheme.? == ']') {
+          len = 2;
+          tokType = .AttrEnd;
+        } else {
+          tokType = .RBracket;
+        }
+      },
+      else => {},
+    }
+
+    const lexeme = this.sourceline[this.pos..this.pos + len];
+    this.pos += len;
+
+    return Token.init(tokType, lexeme, this.line, this.col - 1);
   }
 
-  fn nextGrapheme(this: *Lexer) !u21 {
+  /// Advances to the next grapheme and returns it.
+  /// Output parameter `outGraphemeLen` is set to the length in bytes of the grapheme.
+  /// This is generally 1 byte for ASCII characters but can be up to 4 bytes for Unicode.
+  /// For now, λ is the only non-ASCII grapheme supported.
+  fn nextGrapheme(this: *Lexer, outGraphemeLen: *usize) !u21 {
     const graphemeLen = try Unicode.utf8ByteSequenceLength(this.sourceline[this.pos]);
     const grapheme = try Unicode.utf8Decode(this.sourceline[this.pos..][0..graphemeLen]);
 
-    this.pos += graphemeLen;
+    outGraphemeLen.* = graphemeLen;
+    this.col += 1;
+
+    this.peeked2Grapheme = try this.peekGrapheme();
 
     return grapheme;
   }
@@ -150,12 +478,14 @@ pub const Lexer = struct {
 };
 
 
-inline fn validIdentStart(c: u8) bool {
-  return (std.ascii.isAlphabetic(c)) or (c == '_');
+inline fn validIdentStart(c: u21) bool {
+  const isAsciiAlpha = (c >= @as(u21, 'A') and c <= @as(u21, 'Z')) or (c >= @as(u21, 'a') and c <= @as(u21, 'z'));
+  return isAsciiAlpha or (c == @as(u21, '_')) or (c == 'λ');
 }
 
-inline fn validIdentChar(c: u8) bool {
-  return std.ascii.isAlphanumeric(c) or (c == '_');
+inline fn validIdentGraph(c: u21) bool {
+  const isAsciiAlnum = (c >= @as(u21, 'A') and c <= @as(u21, 'Z')) or (c >= @as(u21, 'a') and c <= @as(u21, 'z')) or (c >= @as(u21, '0') and c <= @as(u21, '9'));
+  return isAsciiAlnum or (c == @as(u21, '_')) or (c == 'λ');
 }
 
 
@@ -168,11 +498,11 @@ test "ValidIdentStart" {
 }
 
 test "ValidIdentChar" {
-  try std.testing.expect(validIdentChar('a'));
-  try std.testing.expect(validIdentChar('Z'));
-  try std.testing.expect(validIdentChar('_'));
-  try std.testing.expect(validIdentChar('1'));
-  try std.testing.expect(!validIdentChar('-'));
+  try std.testing.expect(validIdentGraph('a'));
+  try std.testing.expect(validIdentGraph('Z'));
+  try std.testing.expect(validIdentGraph('_'));
+  try std.testing.expect(validIdentGraph('1'));
+  try std.testing.expect(!validIdentGraph('-'));
 }
 
 test "NextGrapheme" {
