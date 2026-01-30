@@ -169,9 +169,76 @@ pub const Lexer = struct {
 
     // Handle numbers (ints and floats)
 
+
     // Handle string literals
+    if (this.peekedGrapheme.? == '"') {
+      const startCol = this.col;
+      const strStartPos = this.pos;
+      this.pos += graphemeLen; // skip opening "
+      this.peekedGrapheme = try this.nextGrapheme(&graphemeLen);
+
+      while (this.pos < this.sourceline.len) {
+        if (this.peekedGrapheme.? == '"') {
+          break;
+        }
+
+        // Handle escape sequences
+        if (this.peekedGrapheme.? == '\\') {
+          this.pos += 1; // skip '\'
+          this.col += 1;
+
+          if (this.pos >= this.sourceline.len) return error.UnexpectedCharacter;
+
+          this.pos += 1; // skip escape char
+          this.peekedGrapheme = try this.nextGrapheme(&graphemeLen);
+        } else {
+          this.pos += graphemeLen;
+          this.peekedGrapheme = try this.nextGrapheme(&graphemeLen);
+        }
+
+        if (this.pos >= this.sourceline.len) return error.UnexpectedCharacter;
+      }
+
+      if (this.peekedGrapheme.? != '"') return error.UnexpectedCharacter;
+
+      this.pos += graphemeLen; // skip closing "
+
+      const strLexeme = this.sourceline[strStartPos..this.pos];
+      return Token.init(.String, strLexeme, this.line, startCol);
+    }
 
     // Handle characters
+    if (this.peekedGrapheme.? == '\'') {
+      // A character literal is either an escape '\x' or a single grapheme
+
+      const startCol = this.col;
+      const charStartPos = this.pos;
+      this.pos += 1; // skip opening '
+      this.col += 1;
+      if (this.pos >= this.sourceline.len) return error.UnexpectedCharacter;
+      this.pos += 1; // skip '\' or grapheme
+      this.col += 1;
+      if (this.peeked2Grapheme.? == '\\') {
+        // Escape sequence
+        if (this.pos >= this.sourceline.len) return error.UnexpectedCharacter;
+        // For now, only support simple escapes like \n, \t, \', \", \\
+
+        this.pos += 1; // skip escape char
+        this.col += 1;
+
+        if (this.pos >= this.sourceline.len) return error.UnexpectedCharacter;
+        if (this.peekedGrapheme.? != '\'') return error.UnexpectedCharacter;
+      } else {
+        // Single grapheme
+
+        if (this.pos >= this.sourceline.len) return error.UnexpectedCharacter;
+        if (this.peekedGrapheme.? != '\'') return error.UnexpectedCharacter;
+      }
+      this.pos += 1; // skip closing '
+      this.col += 1;
+      const charLexeme = this.sourceline[charStartPos..this.pos];
+      return Token.init(.Char, charLexeme, this.line, startCol);
+    }
 
 
     var len:u32 = 1;
@@ -409,7 +476,9 @@ pub const Lexer = struct {
     outGraphemeLen.* = graphemeLen;
     this.col += 1;
 
+    this.pos += graphemeLen;
     this.peeked2Grapheme = try this.peekGrapheme();
+    this.pos -= graphemeLen;
 
     return grapheme;
   }
@@ -418,6 +487,10 @@ pub const Lexer = struct {
   /// Peeks at the next grapheme without advancing the position.
   ///
   fn peekGrapheme(this: *Lexer) !u21 {
+    if (this.pos >= this.sourceline.len) {
+      return 0;
+    }
+
     const graphemeLen = try Unicode.utf8ByteSequenceLength(this.sourceline[this.pos]);
     const grapheme = try Unicode.utf8Decode(this.sourceline[this.pos..][0..graphemeLen]);
 
